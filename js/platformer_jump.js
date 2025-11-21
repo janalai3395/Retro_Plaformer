@@ -110,7 +110,7 @@ const stages = [
     startY: 300
   },
   {
-    platforms: [ // ✅ Stage 2
+  platforms: [ // Stage 2
     // 점프해서 위로 올라가는 경로
     { x: 50, y: 500, width: 150, height: 15 },
     { x: 200, y: 440, width: 120, height: 15 },
@@ -124,13 +124,13 @@ const stages = [
     { x: 140, y: 180, width: 120, height: 15, isGoal: true },
 
     // 밑으로 빠지는 발판 (돌아가기용)
-    { x: 0, y: 570, width: 550, height: 15 }
-    ],
-    switches: [
-    { x: 320, y: 560, width: 30, height: 10, activated: false }
-    ],
+    { x: 0, y: 590, width: 550, height: 15 }  // ⬇️ y값 570 → 590으로 조정
+  ],
+  switches: [
+    { x: 320, y: 580, width: 30, height: 10, activated: false } // 같이 내리기
+  ],
     startX: 70,
-    startY: 460
+    startY: 460 // ⬇️ 기존 460 → 530 으로 낮춤
   },
 
   // Stage 3
@@ -166,24 +166,7 @@ const stages = [
     startY: 330
   },
 
-  // Stage 4
-  {
-    platforms: [  // ✅ Stage 4
-    { x: 120, y: 550, width: 160, height: 15 },
-    { x: 50,  y: 500, width: 130, height: 15 },
-    { x: 250, y: 450, width: 140, height: 15 },
-    { x: 80,  y: 395, width: 160, height: 15 },
-    { x: 200, y: 340, width: 120, height: 15 },
-    { x: 40,  y: 285, width: 150, height: 15 },
-    { x: 230, y: 230, width: 130, height: 15 },
-    { x: 100, y: 175, width: 150, height: 15 },
-    { x: 180, y: 120, width: 140, height: 15 },
-    { x: 110, y: 70, width: 160, height: 15, isGoal: true }
-    ],
-    switches: [],
-    startX: 120,
-    startY: 500
-  }
+
 ];
 
 // 스위치 상태
@@ -221,8 +204,27 @@ function checkSwitchActivation() {
   platforms.forEach(p => {
     if (Array.isArray(p.requiresSwitch)) {
       const allActivated = p.requiresSwitch.every(idx => switches[idx]?.activated);
-      p.active = allActivated;
+      if (!allActivated) {
+        ctx.globalAlpha = 0.2;  // 희미하게 표시 (혹은 return 으로 숨기기)
+      } else {
+        ctx.globalAlpha = 1.0;
+      }
+    } else if (p.requiresSwitch === true && !switches[0]?.activated) {
+      ctx.globalAlpha = 0.2; // 단일 스위치 의존 조건
+    } else {
+      ctx.globalAlpha = 1.0;
     }
+
+    if (p.isGoal) {
+      ctx.fillStyle = "#ffaa33";
+      ctx.fillRect(p.x, p.y, p.width, p.height);
+      drawFlag(p.x + p.width / 2, p.y);
+    } else {
+      ctx.fillStyle = "#33cc33";
+      ctx.fillRect(p.x, p.y, p.width, p.height);
+    }
+
+    ctx.globalAlpha = 1.0;
   });
 }
 
@@ -269,10 +271,12 @@ function loadStage(index) {
 
   // 💡 조건부 발판 리셋
   platforms.forEach(p => {
-    if (p.originalRequiresSwitch !== undefined) {
-      p.requiresSwitch = p.originalRequiresSwitch;
-    }
-  });
+  if (p.requiresSwitch !== undefined && p.originalRequiresSwitch === undefined) {
+    p.originalRequiresSwitch = JSON.parse(JSON.stringify(p.requiresSwitch));
+  } else if (p.originalRequiresSwitch !== undefined) {
+    p.requiresSwitch = JSON.parse(JSON.stringify(p.originalRequiresSwitch));
+  }
+});
 }
 
 // =======================
@@ -323,6 +327,18 @@ function checkPlatformCollision() {
   player.grounded = false;
 
   platforms.forEach(p => {
+    // 조건부 충돌 제외
+    if (Array.isArray(p.requiresSwitch)) {
+      const allActivated = p.requiresSwitch.every(idx => switches[idx]?.activated);
+      if (!allActivated) return;
+    } else if (typeof p.requiresSwitch === 'number') {
+      if (!switches[p.requiresSwitch]?.activated) return;
+    } else if (typeof p.requiresSwitch === 'string') {
+      if (!p.active) return;
+    } else if (p.requiresSwitch === true) {
+      if (!switches[0]?.activated) return;
+    }
+
     const hor =
       player.x + player.width > p.x &&
       player.x < p.x + p.width;
@@ -330,27 +346,20 @@ function checkPlatformCollision() {
     const prevBottom = player.y + player.height - player.ySpeed;
     const currBottom = player.y + player.height;
 
-      const landing =
+    const landing =
       hor &&
       prevBottom <= p.y &&
       currBottom >= p.y &&
       player.ySpeed > 0;
 
-    if (
-  landing &&
-      (
-        !p.requiresSwitch ||
-        p.active === undefined ||
-        p.active === true ||
-        (Array.isArray(p.requiresSwitch) && p.requiresSwitch.every(idx => switches[idx]?.activated))
-      )
-    ) {
+    if (landing) {
       player.y = p.y - player.height;
       player.ySpeed = 0;
       player.grounded = true;
     }
   });
 }
+
 
 
 // =======================
@@ -379,6 +388,7 @@ function checkStageClear() {
 
     resetKeys();
     isPlaying = false;
+    alert("스테이지 클리어!");
     showStageSelect();
   }
 }
@@ -440,29 +450,33 @@ function draw() {
 
   // 플랫폼 렌더링
   platforms.forEach(p => {
-    let shouldDisplay = true;
+  // 기본 투명도 설정
+  let alpha = 1.0;
 
-    if (Array.isArray(p.requiresSwitch)) {
-      shouldDisplay = p.requiresSwitch.every(idx => switches[idx]?.activated);
-    } else if (typeof p.requiresSwitch === 'number') {
-      shouldDisplay = switches[p.requiresSwitch]?.activated;
-    } else if (typeof p.requiresSwitch === 'string') {
-      shouldDisplay = p.active;
-    }
+  if (Array.isArray(p.requiresSwitch)) {
+    const allActivated = p.requiresSwitch.every(idx => switches[idx]?.activated);
+    if (!allActivated) alpha = 0.3;
+  } else if (typeof p.requiresSwitch === 'number') {
+    if (!switches[p.requiresSwitch]?.activated) alpha = 0.3;
+  } else if (typeof p.requiresSwitch === 'string') {
+    if (!p.active) alpha = 0.3;
+  } else if (p.requiresSwitch === true) {
+    if (!switches[0]?.activated) alpha = 0.3;
+  }
 
-    ctx.globalAlpha = shouldDisplay ? 1.0 : 0.3;
+  ctx.globalAlpha = alpha;
 
-    if (p.isGoal) {
-      ctx.fillStyle = "#ffaa33";
-      ctx.fillRect(p.x, p.y, p.width, p.height);
-      drawFlag(p.x + p.width / 2, p.y);
-    } else {
-      ctx.fillStyle = "#33cc33";
-      ctx.fillRect(p.x, p.y, p.width, p.height);
-    }
+  if (p.isGoal) {
+    ctx.fillStyle = "#ffaa33";
+    ctx.fillRect(p.x, p.y, p.width, p.height);
+    drawFlag(p.x + p.width / 2, p.y);
+  } else {
+    ctx.fillStyle = "#33cc33";
+    ctx.fillRect(p.x, p.y, p.width, p.height);
+  }
 
-    ctx.globalAlpha = 1.0;
-  });
+  ctx.globalAlpha = 1.0; // 다음 요소에 영향을 주지 않도록 초기화
+});
 
   // 스위치 렌더링
   switches.forEach(sw => {
