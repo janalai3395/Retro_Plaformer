@@ -8,9 +8,26 @@
 <body>
 
   <!-- 스테이지 선택 화면 -->
-  <div id="stageSelect">
-    <h1 class="retro-title">STAGE SELECT</h1>
-    <div id="stageButtons"></div>
+  <div id="stageSelect" style="text-align: center; margin-top: 50px;">
+    <h1 class="retro-title">🕹️PlatFormer jump </h1>
+    <p>원하는 스테이지를 선택하세요:</p>
+    <button onclick="startStage(0)">스테이지 1</button>
+    <button onclick="startStage(1)">스테이지 2</button>
+    <button onclick="startStage(2)">스테이지 3</button>
+    <br><br>
+    <button onclick="showInstructions()">게임 방법</button>
+  </div>
+
+  <!-- 게임 설명 -->
+  <div id="instructions" style="display:none; text-align: center; margin-top: 20px;">
+    <h2>🎮 게임 방법</h2>
+    <p>← → 방향키 : 이동</p>
+    <p>스페이스바 : 점프</p>
+    <p>Z 키 : 3초 전으로 되감기</p>
+    <p>R 키 : 현재 스테이지 다시 시작</p>
+    <p>스위치를 눌러 숨겨진 발판을 활성화 시키고, 되감기를 이용해 복잡한 길을 해결해보세요!</p>
+    <br>
+    <button onclick="hideInstructions()">닫기</button>
   </div>
 
   <!-- 게임 화면 -->

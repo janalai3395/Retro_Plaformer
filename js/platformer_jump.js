@@ -4,17 +4,31 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
+
 // 키 입력
 const keys = {};
-document.addEventListener("keydown", (e) => keys[e.key] = true);
+document.addEventListener("keydown", (e) => {
+  keys[e.key] = true;
+
+  if (e.key === "r" || e.key === "R") {
+    restartStage();  // 🔄 R키를 누르면 재시작
+  }
+});
 document.addEventListener("keyup", (e) => keys[e.key] = false);
+
 
 // 되감기 기록
 let positionHistory = [];
 const rewindFrames = 300; // 5초치 기록
 rewindHistory = [];  // 되감기 히스토리 초기화
 
+function showInstructions() {
+  document.getElementById("instructions").style.display = "block";
+}
 
+function hideInstructions() {
+  document.getElementById("instructions").style.display = "none";
+}
 
 // =======================
 // 게임 상태
@@ -58,6 +72,14 @@ function resetStageState() {
   });
 }
 
+// =======================
+// 스테이지 재시작
+// =======================
+function restartStage() {
+  resetKeys();
+  loadStage(currentStage);
+  startTime = Date.now();
+}
 // =======================
 // 스테이지 데이터
 // =======================
@@ -115,27 +137,30 @@ const stages = [
   {
     platforms: [
       // 시작 위치 근처
-      { x: 160, y: 550, width: 80, height: 15 }, // 중앙 아래 시작
-      { x: 50, y: 500, width: 80, height: 15 },  // 좌측 하단 스위치 아래
-      { x: 250, y: 500, width: 80, height: 15 }, // 우측 하단 스위치 아래
+      { x: 0, y: 500, width: 120, height: 15 },  // 좌측 하단 스위치 아래
+      { x: 300, y: 500, width: 120, height: 15 }, // 우측 하단 스위치 아래
 
       // 스위치 누를 때 막히는 영역 (조건부 벽)
-      { x: 250, y: 460, width: 80, height: 15, requiresSwitch: 'blockLeft' },  // 왼쪽 누르면 막힘
-      { x: 50, y: 460, width: 80, height: 15, requiresSwitch: 'blockRight' },  // 오른쪽 누르면 막힘
+      { x: 300, y: 460, width: 120, height: 15, requiresSwitch: 'blockLeft', active: false },  // 왼쪽 누르면 막힘
+      { x: 0, y: 460, width: 120, height: 15, requiresSwitch: 'blockRight', active: false },  // 오른쪽 누르면 막힘
 
       // 중간 경로
       { x: 120, y: 400, width: 100, height: 15 },
       { x: 200, y: 350, width: 100, height: 15 },
+      { x: 180, y: 300, width: 100, height: 15 },
+
+      //맨 밑 발판
+      { x: 0, y: 580, width: 400, height: 15 },
 
       // 조건부 발판 (스위치 두 개 다 눌려야 열림)
       { x: 160, y: 250, width: 100, height: 15, requiresSwitch: [0, 1], originalRequiresSwitch: [0, 1] },
 
       // 골대
-      { x: 160, y: 200, width: 120, height: 15, isGoal: true }
+      { x: 160, y: 180, width: 120, height: 15, isGoal: true }
     ],
     switches: [
-      { x: 70, y: 490, width: 20, height: 10, activated: false, id: 'sw0' },   // 좌측 하단
-      { x: 270, y: 490, width: 20, height: 10, activated: false, id: 'sw1' }   // 우측 하단
+      { x: 50, y: 490, width: 20, height: 10, activated: false, id: 'sw0' },   // 좌측 하단
+      { x: 350, y: 490, width: 20, height: 10, activated: false, id: 'sw1' }   // 우측 하단
     ],
     startX: 180,
     startY: 330
@@ -165,7 +190,7 @@ const stages = [
 let switchSequence = [];
 
 function checkSwitchActivation() {
-  switches.forEach(sw => {
+  switches.forEach((sw, idx) => {
     const hit =
       player.x + player.width > sw.x &&
       player.x < sw.x + sw.width &&
@@ -174,34 +199,34 @@ function checkSwitchActivation() {
 
     if (hit && !sw.activated) {
       sw.activated = true;
-      switchSequence.push(sw.id);
     }
   });
 
-  // 스위치에 따른 벽 활성화 처리
+  // 조건부 벽 처리
   const blockLeft = platforms.find(p => p.requiresSwitch === 'blockLeft');
   const blockRight = platforms.find(p => p.requiresSwitch === 'blockRight');
-  if (switches[0].activated && !switches[1].activated) {
-  blockRight.active = true; // 왼쪽 스위치 누르면 오른쪽 막음
-  blockLeft.active = false;
-} else if (switches[1].activated && !switches[0].activated) {
-  blockLeft.active = true;  // 오른쪽 스위치 누르면 왼쪽 막음
-  blockRight.active = false;
-} else {
-  blockLeft.active = false;
-  blockRight.active = false;
-}
-  // 시퀀스 조건을 확인하여 발판 열기
+
+  if (switches[0] && switches[0].activated && (!switches[1] || !switches[1].activated)) {
+    if (blockRight) blockRight.active = true;
+    if (blockLeft) blockLeft.active = false;
+  } else if (switches[1] && switches[1].activated && (!switches[0] || !switches[0].activated)) {
+    if (blockLeft) blockLeft.active = true;
+    if (blockRight) blockRight.active = false;
+  } else {
+    if (blockLeft) blockLeft.active = false;
+    if (blockRight) blockRight.active = false;
+  }
+
+  // 조건부 발판 처리
   platforms.forEach(p => {
-    if (p.requiresSwitch === 'seq12') {
-      const requiredSequence = ['sw1', 'sw2'];
-      const actual = switchSequence.slice(-2);
-      if (JSON.stringify(actual) === JSON.stringify(requiredSequence)) {
-        p.requiresSwitch = false;
-      }
+    if (Array.isArray(p.requiresSwitch)) {
+      const allActivated = p.requiresSwitch.every(idx => switches[idx]?.activated);
+      p.active = allActivated;
     }
   });
 }
+
+
 
 
 // =======================
@@ -234,6 +259,20 @@ function loadStage(index) {
   player.y = stage.startY;
   rewindHistory = [];
   positionHistory = [];
+
+  // 💡 조건부 벽 초기화
+  platforms.forEach(p => {
+  if (p.requiresSwitch === 'blockLeft' || p.requiresSwitch === 'blockRight') {
+    p.active = false;
+  }
+});
+
+  // 💡 조건부 발판 리셋
+  platforms.forEach(p => {
+    if (p.originalRequiresSwitch !== undefined) {
+      p.requiresSwitch = p.originalRequiresSwitch;
+    }
+  });
 }
 
 // =======================
@@ -291,13 +330,21 @@ function checkPlatformCollision() {
     const prevBottom = player.y + player.height - player.ySpeed;
     const currBottom = player.y + player.height;
 
-    const landing =
+      const landing =
       hor &&
       prevBottom <= p.y &&
       currBottom >= p.y &&
       player.ySpeed > 0;
 
-    if (landing) {
+    if (
+  landing &&
+      (
+        !p.requiresSwitch ||
+        p.active === undefined ||
+        p.active === true ||
+        (Array.isArray(p.requiresSwitch) && p.requiresSwitch.every(idx => switches[idx]?.activated))
+      )
+    ) {
       player.y = p.y - player.height;
       player.ySpeed = 0;
       player.grounded = true;
@@ -313,9 +360,8 @@ function checkStageClear() {
   const goal = platforms.find(p => p.isGoal);
   if (!goal) return;
 
-  // 🎯 깃발 위치에 맞춰 충돌 박스 설정
-  const flagX = goal.x + goal.width / 2 - 10; // 깃발 기준 중앙 정렬
-  const flagY = goal.y - 30;                 // 깃발 세로 위치
+  const flagX = goal.x + goal.width / 2 - 10;
+  const flagY = goal.y - 30;
   const flagWidth = 20;
   const flagHeight = 30;
 
@@ -331,10 +377,9 @@ function checkStageClear() {
       saveUnlockedStage();
     }
 
-    alert("🎉 Stage Clear!");
     resetKeys();
     isPlaying = false;
-    return showStageSelect();
+    showStageSelect();
   }
 }
 
@@ -348,7 +393,7 @@ function checkGameOver() {
   resetKeys();   // 🎯 여기가 핵심
   isPlaying = false;
 
-  return showStageSelect();
+  return;
   }
 }
 
@@ -377,22 +422,35 @@ function draw() {
 
   const blockLeft = platforms.find(p => p.requiresSwitch === 'blockLeft');
   const blockRight = platforms.find(p => p.requiresSwitch === 'blockRight');
-  // 조건부 벽 그리기
-    if (blockLeft.active) {
-    ctx.fillStyle = "#9933ff";
-    ctx.fillRect(blockLeft.x, blockLeft.y, blockLeft.width, blockLeft.height);
+
+  // 조건부 벽 상태 설정
+  if (switches[0]?.activated && !switches[1]?.activated) {
+    if (blockRight) blockRight.active = true;
+    if (blockLeft) blockLeft.active = false;
+  } else if (switches[1]?.activated && !switches[0]?.activated) {
+    if (blockLeft) blockLeft.active = true;
+    if (blockRight) blockRight.active = false;
+  } else if (switches[0]?.activated && switches[1]?.activated) {
+    if (blockLeft) blockLeft.active = true;
+    if (blockRight) blockRight.active = true;
+  } else {
+    if (blockLeft) blockLeft.active = false;
+    if (blockRight) blockRight.active = false;
   }
-  if (blockRight.active) {
-    ctx.fillStyle = "#9933ff";
-    ctx.fillRect(blockRight.x, blockRight.y, blockRight.width, blockRight.height);
-  }
-  // 플랫폼
+
+  // 플랫폼 렌더링
   platforms.forEach(p => {
-    if (p.requiresSwitch && !switches[0].activated) {
-      ctx.globalAlpha = 0.3; // 조건부 발판은 희미하게
-    } else {
-      ctx.globalAlpha = 1.0;
+    let shouldDisplay = true;
+
+    if (Array.isArray(p.requiresSwitch)) {
+      shouldDisplay = p.requiresSwitch.every(idx => switches[idx]?.activated);
+    } else if (typeof p.requiresSwitch === 'number') {
+      shouldDisplay = switches[p.requiresSwitch]?.activated;
+    } else if (typeof p.requiresSwitch === 'string') {
+      shouldDisplay = p.active;
     }
+
+    ctx.globalAlpha = shouldDisplay ? 1.0 : 0.3;
 
     if (p.isGoal) {
       ctx.fillStyle = "#ffaa33";
@@ -403,10 +461,10 @@ function draw() {
       ctx.fillRect(p.x, p.y, p.width, p.height);
     }
 
-    ctx.globalAlpha = 1.0; // 다음 플랫폼을 위해 투명도 초기화
+    ctx.globalAlpha = 1.0;
   });
 
-  // 스위치
+  // 스위치 렌더링
   switches.forEach(sw => {
     ctx.fillStyle = sw.activated ? "#ffcc00" : "#888888";
     ctx.fillRect(sw.x, sw.y, sw.width, sw.height);
@@ -414,6 +472,7 @@ function draw() {
 
   drawUI();
 }
+
 
 
 // =======================
@@ -430,11 +489,12 @@ function update() {
       positionHistory.shift();
   }
 
-  if ((keys["z"] || keys["Z"]) && !rewindPressed) {
-    rewindPlayer();
-    rewindPressed = true;
-  }
-  if (!keys["z"] && !keys["Z"]) rewindPressed = false;
+if ((keys["z"] || keys["Z"]) && !rewindPressed) {
+  isRewinding = true;
+  rewindFrameCount = 180; // 3초치 되감기
+  rewindPressed = true;
+}
+if (!keys["z"] && !keys["Z"]) rewindPressed = false;
 
   updatePlayerMovement();
   checkPlatformCollision();
@@ -446,33 +506,6 @@ function update() {
   requestAnimationFrame(update);
 }
 
-// =======================
-// 스테이지 선택 화면
-// =======================
-function showStageSelect() {
-  const menu = document.getElementById("stageSelect");
-  const buttons = document.getElementById("stageButtons");
-
-  buttons.innerHTML = "";
-
-  for (let i = 0; i < stages.length; i++) {
-    const btn = document.createElement("button");
-
-    if (i <= unlockedStage) {
-      btn.textContent = `STAGE ${i + 1}`;
-      btn.classList.add("unlocked");
-      btn.onclick = () => startStage(i);
-    } else {
-      btn.textContent = `STAGE ${i + 1} 🔒`;
-      btn.classList.add("locked");
-    }
-
-    buttons.appendChild(btn);
-  }
-
-  menu.style.display = "block";
-  canvas.style.display = "none";
-}
 
 // =======================
 // 스테이지 시작
@@ -482,6 +515,7 @@ function startStage(i) {
   isPlaying = true;   // 게임 시작!
   startTime = Date.now(); 
   document.getElementById("stageSelect").style.display = "none";
+  document.getElementById("instructions").style.display = "none"; // 🔽 게임 방법 UI 닫기
   canvas.style.display = "block";
   loadStage(i);
   update();
@@ -491,7 +525,7 @@ function startStage(i) {
 // 초기 시작
 // =======================
 loadUnlockedStage();
-showStageSelect();
+
 
 
 
@@ -513,52 +547,11 @@ function drawShadows() {
   }
 }
 
-
-
-
-
-function checkSwitchActivation() {
-  switches.forEach(sw => {
-    const hit =
-      player.x + player.width > sw.x &&
-      player.x < sw.x + sw.width &&
-      player.y + player.height > sw.y &&
-      player.y < sw.y + sw.height;
-
-    if (hit && !sw.activated) {
-      sw.activated = true;
-    }
-  });
-}
-
-
-// ===== 수정된 되감기 및 잔상 함수 =====
-
-// ✅ 수정된 rewindPlayer 함수
-function rewindPlayer() {
-  if (positionHistory.length === 0) {
-    console.log("⛔ 되감기 기록이 없습니다!");
-    return;
-  }
-
-  const pos = positionHistory.pop();
-  player.x = pos.x;
-  player.y = pos.y;
-  player.ySpeed = 0;
-}
-
-
-
 // 🔁 되감기 설정
 let isRewinding = false;
 let rewindFrameCount = 0;
 const maxRewindFrames = 180;
 
-function rewindPlayer() {
-  if (positionHistory.length === 0) return;
-  isRewinding = true;
-  rewindFrameCount = maxRewindFrames;
-}
 
 function processRewind() {
   if (!isRewinding) return;
@@ -573,4 +566,8 @@ function processRewind() {
   }
 }
 
+function showStageSelect() {
+  document.getElementById("stageSelect").style.display = "block";
+  canvas.style.display = "none";
+}
 
